@@ -1,3 +1,4 @@
+#!/usr/bin/env ruby
 require 'rfid'
 
 text  = ARGV.join(' ') + "\x00"

@@ -58,61 +58,73 @@ module RFID
 
         def getFirmWareInfo
             status, buf = requestIN(0x65, 0, 0, 10)
-            return nil unless status == RFID::Status::OK
-            info = OpenStruct.new
-            info.softwareRevision = "%02x-%02x" % [buf[0], buf[1]]
-            info.hardwareType     = buf[3]
-            info.firmware         = buf[4]
-            info.firmwareName     = case info.firmware
-                                    when 0x49: "ID ISC.MR100-U"
-                                    else       "unknown"
-                                    end
-            info.transponder      = [buf[5], buf[6]]                                    
-            info
+            case status 
+            when RFID::Status::OK
+                info = OpenStruct.new
+                info.softwareRevision = "%02x-%02x" % [buf[0], buf[1]]
+                info.hardwareType     = buf[3]
+                info.firmware         = buf[4]
+                info.firmwareName     = case info.firmware
+                                        when 0x49: "ID ISC.MR100-U"
+                                        else       "unknown"
+                                        end
+                info.transponder      = [buf[5], buf[6]]                                    
+                info
+            else
+                nil
+            end
         end
 
         def readSerials
             status, buf = requestIN(0xB0, 0, 0x0100)
-            return [] if status == RFID::Status::NOTRANSPONDER
-            raise "cannot read serials" unless status == RFID::Status::OK
-            serials = []
-            numserials = buf[0]
-            buf.slice!(0)
-            return nil unless buf.size == numserials * 10
-            numserials.times do |i|
-                serial = OpenStruct.new
-                serial.trType = buf[0]
-                serial.dsfid  = buf[1]
-                serial.snr    = buf[2..9]
-                serial.snrHex = buf[2..9].unpack("H*")[0]
-                serials << serial
-                buf.slice!(0..9)
+            case status
+            when RFID::Status::OK:
+                serials = []
+                numserials = buf[0]
+                buf.slice!(0)
+                return nil unless buf.size == numserials * 10
+                numserials.times do |i|
+                    serial = OpenStruct.new
+                    serial.trType = buf[0]
+                    serial.dsfid  = buf[1]
+                    serial.snr    = buf[2..9]
+                    serial.snrHex = buf[2..9].unpack("H*")[0]
+                    serials << serial
+                    buf.slice!(0..9)
+                end
+                serials
+            when RFID::Status::NOTRANSPONDER:
+                []
+            else
+                raise "cannot read serials" 
             end
-            serials
         end
 
-        def read(snr, blockOffset = 0, numBlocks = 32)
+        def read(snr, blockOffset = 0, blockCount = 32)
             raise "invalid address" unless snr.size == 8
-            requestOUT(0xB0, 0, 0x2301, snr + [blockOffset, numBlocks].pack("CC"))
+            requestOUT(0xB0, 0, 0x2301, snr + [blockOffset, blockCount].pack("CC"))
             status, buf = requestIN(0xB0, 0, 0x2301)
-            if status == RFID::Status::UNKNOWN
-                warn "unknown status 2"
-                return nil
+            case status
+            when RFID::Status::OK:
+                # <numBlocksRead> <blockSize> {0 data3 data2 data1 data0}*
+                raise "cannot read data" unless status == RFID::Status::OK
+                raise "reply too small"  unless buf.size >= 2
+                numBlocks = buf[0]
+                blockSize = buf[1]
+                buf.slice!(0..1)
+                raise "block size inconsistency"  unless buf.size == numBlocks * 5
+                data = ""
+                numBlocks.times do 
+                    data += buf[1..blockSize].reverse
+                    buf.slice!(0..blockSize)
+                end
+                [data, numBlocks, blockSize]
+            when RFID::Status::NOTRANSPONDER:
+                nil
+            else
+                warn "unknown status #{status}"
+                nil
             end
-            return nil if status == RFID::Status::NOTRANSPONDER
-            # <numBlocksRead> <blockSize> {0 data3 data2 data1 data0}*
-            raise "cannot read data" unless status == RFID::Status::OK
-            raise "reply too small"  unless buf.size >= 2
-            numBlocksRead = buf[0]
-            blockSize     = buf[1]
-            buf.slice!(0..1)
-            raise "block size inconsistency"  unless buf.size == numBlocksRead * 5
-            data = ""
-            numBlocksRead.times do 
-                data += buf[1..blockSize].reverse
-                buf.slice!(0..blockSize)
-            end
-            [data, numBlocksRead, blockSize]
         end
 
         def write(snr, data, blockOffset = 0)
@@ -120,8 +132,7 @@ module RFID
             return false unless data.size % 4 == 0
             data.gsub!(/..../) { |b| b.reverse }
             requestOUT(0xB0, 0, 0x2401, snr + [blockOffset, data.size / 4, 4].pack("CCC") + data)
-            status, buf = requestIN(0xB0, 0, 0x2401)
-            status == RFID::Status::OK
+            requestIN(0xB0, 0, 0x2401) == [RFID::Status::OK, ""]
         end
 
         def resetRF
@@ -137,4 +148,3 @@ module RFID
         end
     end
 end
-

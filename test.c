@@ -25,10 +25,11 @@ int main() {
         assert(buf[2] == 0 || buf[2] == 1);
 
         if (buf[2] == 0) {
+            int tag;
+
             assert(len >= 4);
             assert(len == buf[3] * 10 + 4);
 
-            int tag;
             for (tag = 0; tag < buf[3]; tag++) {
                 int ident;
                 for (ident = 2; ident < 10; ident++)

@@ -9,24 +9,25 @@
 #define RFID_VENDOR  0x0AB1
 #define RFID_PRODUCT 0x0002
 
+#define TIMEOUT      10000
+
 typedef struct rfid_s {
     usb_dev_handle *dev;
 } rfid_t;
 
 rfid_t *rfid_open(int deviceno) {
-    int    ret;
     int    num = 0;
     rfid_t *rfid;
     struct usb_bus *bus;
     struct usb_device *dev;
 
-    if (!usb_get_busses()) {
+    if (!usb_busses) {
         usb_init();
         usb_find_busses();
         usb_find_devices();
     }
 
-    if (!usb_get_busses()) {
+    if (!usb_busses) {
         fprintf(stderr, "no usb bus found?\n");
         return NULL;
     }
@@ -40,7 +41,7 @@ rfid_t *rfid_open(int deviceno) {
             }
         }
     }
-    fprintf(stderr, "no device found\n");
+    fprintf(stderr, "device %d not found\n", deviceno);
     return NULL;
 
 found:
@@ -53,13 +54,12 @@ found:
 
     rfid->dev = usb_open(dev);
     if (!rfid->dev) {
-        fprintf(stderr, "cannot open device: %s\n", usb_strerror());
+        fprintf(stderr, "cannot open device %d: %s\n", deviceno, usb_strerror());
         free(rfid);
         return NULL;
     }
 
-    ret = usb_claim_interface(rfid->dev, 1);
-    if (ret < 0) {
+    if (usb_claim_interface(rfid->dev, 1) < 0) {
         fprintf(stderr, "claim failed: %s\n", usb_strerror()); 
         usb_close(rfid->dev);
         free(rfid);
@@ -72,9 +72,13 @@ found:
 int rfid_requestIN(rfid_t *rfid, int req, int value, int index,
                   unsigned char *buf, int buflen) 
 {
+	int ret;
+
     assert(rfid);
-    int ret = usb_control_msg(rfid->dev, USB_ENDPOINT_IN + USB_TYPE_VENDOR,
-                              req, value, index, buf, buflen, 10000);
+    assert(rfid->dev);
+
+    ret = usb_control_msg(rfid->dev, USB_ENDPOINT_IN + USB_TYPE_VENDOR,
+                          req, value, index, (char*)buf, buflen, TIMEOUT);
 
     if (ret < 0) {
         fprintf(stderr, "cannot read message: %s\n", usb_strerror());
@@ -87,9 +91,13 @@ int rfid_requestIN(rfid_t *rfid, int req, int value, int index,
 int rfid_requestOUT(rfid_t *rfid, int req, int value, int index,
                   unsigned char *buf, int buflen) 
 {
+	int ret;
+    
     assert(rfid);
-    int ret = usb_control_msg(rfid->dev, USB_ENDPOINT_OUT + USB_TYPE_VENDOR,
-                              req, value, index, buf, buflen, 10000);
+    assert(rfid->dev);
+
+    ret = usb_control_msg(rfid->dev, USB_ENDPOINT_OUT + USB_TYPE_VENDOR,
+                          req, value, index, (char*)buf, buflen, TIMEOUT);
 
     if (ret < 0) {
         fprintf(stderr, "cannot read message: %s\n", usb_strerror());
@@ -102,7 +110,7 @@ int rfid_requestOUT(rfid_t *rfid, int req, int value, int index,
 void rfid_close(rfid_t *rfid) {
     assert(rfid);
     assert(rfid->dev);
+
     usb_close(rfid->dev);
     free(rfid);
 }
-
