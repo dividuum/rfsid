@@ -23,8 +23,10 @@ RFID::Device.new(0) do |rfid|
 
         if playinglabel
             unless labels.include?(playinglabel)
+                print "label disappeared. stopping player..."
                 Process.kill("TERM", playerpid)
                 Process.wait
+                puts "OK"
                 playinglabel = nil
             end
         else
@@ -40,7 +42,7 @@ RFID::Device.new(0) do |rfid|
             next unless label.trType    == 3 
             next unless label.blockSize == 8 
 
-            print "Using label #{label.snrHex}. Loading "
+            print "#{labels.size} labels. using #{label.snrHex} "
 
             begin
                 header, numBlocks, blockSize = rfid.read(label.snr, 3, 1) 
@@ -55,7 +57,7 @@ RFID::Device.new(0) do |rfid|
             end
 
             compressed = header.unpack("n")[0]
-            print "(size = #{compressed})"
+            print "(size = #{compressed}) "
             
             # Labels sind erst ab Block 3 beschrieben
             offset     = 3
@@ -89,6 +91,8 @@ RFID::Device.new(0) do |rfid|
                 next
             end
 
+            print " (uncompressed size = #{siddata.size}) "
+
             begin
                 File.open("/tmp/sidplay.sid", "w") do |o|
                     o.write(siddata)
@@ -98,13 +102,17 @@ RFID::Device.new(0) do |rfid|
                 next
             end
 
-            puts "OK"
+            print "(starting player) "
+
             playerpid = fork do 
                 null = File.open("/dev/null")
                 $stdout.reopen(null)
                 $stderr.reopen(null)
                 exec("sidplay2", "/tmp/sidplay.sid")
             end
+
+
+            puts "OK"
 
             playinglabel = label
             rfid.setLED(:red)

@@ -57,7 +57,6 @@ module RFID
 
         def requestOUT(req, val, idx, data)
             buffer = data.to_ptr
-            # data.each_byte {|i| print "%02x " % i}; puts
             len = RFID::rfid_requestOUT(@rfid, req, val, idx, buffer, data.size)
             raise "error sending RFID out request" if len < 0
             raise "short send" unless len == data.size
