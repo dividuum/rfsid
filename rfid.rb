@@ -11,11 +11,20 @@ module RFID
     extern "void    rfid_close(rfid_t *)"
 
     module Status
-        OK             = 0x00
-        NOTRANSPONDER  = 0x01
-        UNKNOWN        = 0x02
-        WRONGTYPE      = 0x05
-        ISOWARN        = 0x95
+        OK                      = 0x00
+        NO_TRANSPONDER          = 0x01
+        DATA_FALSE              = 0x02
+        WRITE_ERROR             = 0x03
+        ADDRESS_ERROR           = 0x04
+        WRONG_TRANSPONDER_TYPE  = 0x05
+        EEPROM_FAILURE          = 0x10
+        PARAMETER_RANGE_ERROR   = 0x11
+        UNKNOWN_COMMAND         = 0x80
+        LENGTH_ERROR            = 0x81
+        COMMAND_NOT_AVAILABLE   = 0x82
+        RF_COMMUNICATION_ERROR  = 0x83
+        MORE_DATA               = 0x94
+        ISO_15693_ERROR         = 0x95
     end
 
     class Device
@@ -65,7 +74,9 @@ module RFID
                 info.hardwareType     = buf[3]
                 info.firmware         = buf[4]
                 info.firmwareName     = case info.firmware
+                                        when 0x48: "ID ISC.PRH100-A"
                                         when 0x49: "ID ISC.MR100-U"
+                                        when 0x4A: "ID ISCMR/PR100-A"
                                         else       "unknown"
                                         end
                 info.transponder      = [buf[5], buf[6]]                                    
@@ -76,28 +87,38 @@ module RFID
         end
 
         def readSerials
-            status, buf = requestIN(0xB0, 0, 0x0100)
-            case status
-            when RFID::Status::OK:
-                serials = []
-                numserials = buf[0]
-                buf.slice!(0)
-                return nil unless buf.size == numserials * 10
-                numserials.times do |i|
-                    serial = OpenStruct.new
-                    serial.trType = buf[0]
-                    serial.dsfid  = buf[1]
-                    serial.snr    = buf[2..9]
-                    serial.snrHex = buf[2..9].unpack("H*")[0]
-                    serials << serial
-                    buf.slice!(0..9)
+            serials  = []
+            moredata = false
+            begin
+                status, buf = requestIN(0xB0, 0, moredata ? 0x0180 : 0x0100)
+                case status
+                when RFID::Status::MORE_DATA, RFID::Status::OK:
+                    numserials = buf[0]
+                    buf.slice!(0)
+                    raise "size inconsistency" unless buf.size == numserials * 10
+                    numserials.times do |i|
+                        serial = OpenStruct.new
+                        serial.trType     = buf[0]
+                        serial.trTypeName = case buf[0]
+                                            when 0x00: "Philips I-CODE1"
+                                            when 0x01: "Texas Instruments Tag-it HF"
+                                            when 0x03: "ISO15693 Tags"
+                                            else       "unknown"
+                                            end
+                        serial.dsfid      = buf[1]
+                        serial.snr        = buf[2..9]
+                        serial.snrHex     = buf[2..9].unpack("H*")[0]
+                        serials << serial
+                        buf.slice!(0..9)
+                    end
+                    moredata = status == RFID::Status::MORE_DATA
+                    puts "FSDFSDFSFD" if moredata
+                when RFID::Status::NO_TRANSPONDER:
+                else
+                    raise "cannot read serials" 
                 end
-                serials
-            when RFID::Status::NOTRANSPONDER:
-                []
-            else
-                raise "cannot read serials" 
-            end
+            end while moredata
+            serials
         end
 
         def read(snr, blockOffset = 0, blockCount = 32)
@@ -119,7 +140,7 @@ module RFID
                     buf.slice!(0..blockSize)
                 end
                 [data, numBlocks, blockSize]
-            when RFID::Status::NOTRANSPONDER:
+            when RFID::Status::NO_TRANSPONDER:
                 nil
             else
                 warn "unknown status #{status}"
