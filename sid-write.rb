@@ -6,7 +6,6 @@ files = []
 if ARGV.empty?
     $stdin.each_line do |line|
         files << line[9..-1].chomp
-        p files
     end
 else
     files = ARGV

@@ -148,7 +148,7 @@ module RFID
             when RFID::Status::NO_TRANSPONDER:
                 nil
             else
-                warn "unknown status #{status}"
+                # warn "unknown status #{status}"
                 nil
             end
         end
