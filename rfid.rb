@@ -45,6 +45,7 @@ module RFID
 
         def requestOUT(req, val, idx, data)
             buffer = data.to_ptr
+            # data.each_byte {|i| print "%02x " % i}; puts
             len = RFID::rfid_requestOUT(@rfid, req, val, idx, buffer, data.size)
             raise "error sending RFID out request" if len < 0
             raise "short send" unless len == data.size
@@ -97,12 +98,29 @@ module RFID
                 warn "unknown status 2"
                 return nil
             end
-            if status == RFID::Status::NOTRANSPONDER
-                return nil 
-            end
+            return nil if status == RFID::Status::NOTRANSPONDER
+            # <numBlocksRead> <blockSize> {0 data3 data2 data1 data0}*
             raise "cannot read data" unless status == RFID::Status::OK
-            raise "block inconsistency" unless buf[0] == numBlocks
-            [buf[1], buf[2..-1]]
+            raise "reply too small"  unless buf.size >= 2
+            numBlocksRead = buf[0]
+            blockSize     = buf[1]
+            buf.slice!(0..1)
+            raise "block size inconsistency"  unless buf.size == numBlocksRead * 5
+            data = ""
+            numBlocksRead.times do 
+                data += buf[1..blockSize].reverse
+                buf.slice!(0..blockSize)
+            end
+            [data, numBlocksRead, blockSize]
+        end
+
+        def write(snr, data, blockOffset = 0)
+            # FIXME: Support fuer Blocksize != 4 einbauen?
+            return false unless data.size % 4 == 0
+            data.gsub!(/..../) { |b| b.reverse }
+            requestOUT(0xB0, 0, 0x2401, snr + [blockOffset, data.size / 4, 4].pack("CCC") + data)
+            status, buf = requestIN(0xB0, 0, 0x2401)
+            status == RFID::Status::OK
         end
 
         def resetRF
@@ -119,19 +137,3 @@ module RFID
     end
 end
 
-
-RFID::Device.new(0) do |rfid|
-    loop do 
-        rfid.readSerials.each do |label|
-            p label.snrHex
-            blockSize, data = rfid.read(label.snr, 0, 4)
-            if blockSize
-                p data
-                p data.size
-            end
-        end
-    end
-    #loop do 
-    #    p rfid.request(0xB0, 0x0000, 0x0100)
-    #end
-end
