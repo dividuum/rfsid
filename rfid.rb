@@ -182,7 +182,7 @@ module RFID
                         buf.slice!(0..9)
                     end
                     moredata = status == RFID::Status::MORE_DATA
-                    puts "FSDFSDFSFD" if moredata
+                    puts "more data" if moredata
                 when RFID::Status::NO_TRANSPONDER:
                 else
                     raise "cannot read serials: #{status}" 
@@ -219,7 +219,6 @@ module RFID
         end
 
         def write(snr, data, blockOffset = 0, blockSize = 4)
-            # FIXME: Support fuer Blocksize != 4 einbauen?
             return false unless data.size % blockSize == 0
             data.gsub!(/#{'.' * blockSize}/m) { |b| b.reverse }
             requestOUT(0xB0, 0, 0x2401, snr + [blockOffset, data.size / blockSize, blockSize].pack("CCC") + data)

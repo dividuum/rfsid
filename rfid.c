@@ -59,6 +59,13 @@ found:
         return NULL;
     }
 
+    if (usb_detach_kernel_driver_np(rfid->dev, 1) < 0) {
+        fprintf(stderr, "cannot detach: %s\n", usb_strerror()); 
+        usb_close(rfid->dev);
+        free(rfid);
+        return NULL;
+    }
+
     if (usb_claim_interface(rfid->dev, 1) < 0) {
         fprintf(stderr, "claim failed: %s\n", usb_strerror()); 
         usb_close(rfid->dev);

@@ -1,7 +1,7 @@
 #!/usr/bin/env ruby
 require 'rfid'
 
-text  = ARGV.join(' ') + "\x00"
+text  = ARGV.join(' ')
 text += "\x00" * (4 - text.size % 4)
 
 RFID::Device.new(0) do |rfid|
