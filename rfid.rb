@@ -19,6 +19,8 @@ module RFID
         WRONG_TRANSPONDER_TYPE  = 0x05
         EEPROM_FAILURE          = 0x10
         PARAMETER_RANGE_ERROR   = 0x11
+        READ_PROTECTION         = 0x15
+        WRITE_PROTECTION        = 0x16
         UNKNOWN_COMMAND         = 0x80
         LENGTH_ERROR            = 0x81
         COMMAND_NOT_AVAILABLE   = 0x82
@@ -61,6 +63,34 @@ module RFID
             raise "short send" unless len == data.size
         end
 
+        def resetConfig(cfg, eeprom = false)
+            requestIN(0x83, 0, ((eeprom ? 0x80 : 0x00) + cfg) << 8, 3) == [RFID::Status::OK, ""]
+        end
+
+        def readConfig(cfg, eeprom = false)
+            status, buf = requestIN(0x80, 0, ((eeprom ? 0x80 : 0x00) + cfg) << 8, 0x11)
+            case status
+            when RFID::Status::OK
+                buf.unpack("C*")
+            else
+                nil
+            end
+        end
+
+        def writeConfig(cfg, block, eeprom = false)
+            raise "argument error" unless block.size == 14
+            requestOUT(0x81, 0, ((eeprom ? 0x80 : 0x00) + cfg) << 8, block.pack("C*"))
+            requestIN(0x81, 0, ((eeprom ? 0x80 : 0x00) + cfg) << 8) == [RFID::Status::OK, ""]
+        end
+
+        def setConfig(cfg, idx, val)
+            raise "argument error" unless idx < 14
+            block = readConfig(cfg)
+            return false unless block
+            block[idx] = val
+            writeConfig(cfg, block)
+        end
+        
         def resetCPU
             requestIN(0x63, 0, 0, 3) == [RFID::Status::OK, ""]
         end
@@ -83,6 +113,42 @@ module RFID
                 info
             else
                 nil
+            end
+        end
+
+        def setOutput(greenmode, greenfreq, redmode, redfreq, time = 65535)
+            def mode2byte(mode)
+                case mode
+                when :unchanged: 0x00
+                when :on       : 0x01
+                when :off      : 0x02
+                when :flash    : 0x03
+                else raise "argument error: mode #{mode} unknown"
+                end
+            end
+            def freq2byte(freq)
+                case freq
+                when 8: 0x00
+                when 4: 0x01
+                when 2: 0x02
+                when 1: 0x03
+                else raise "argument error: freq #{freq} unknown"
+                end
+            end
+            buf = [0, mode2byte(redmode) << 2 | mode2byte(greenmode),
+                   0, freq2byte(redfreq) << 2 | freq2byte(greenfreq),
+                   time, 0, 0].pack("CCCCnCC")
+            requestOUT(0x71, 0, 0, buf)
+            requestIN(0x71, 0, 0, 3) == [RFID::Status::OK, ""]
+        end
+
+        def setLED(color, time = 65535, freq = nil)
+            case color
+            when :off   : setOutput(:off               ,         1, :off               ,         1, time)
+            when :green : setOutput(freq ? :flash : :on, freq || 1, :off               ,         1, time)
+            when :orange: setOutput(freq ? :flash : :on, freq || 1, freq ? :flash : :on, freq || 1, time)
+            when :red   : setOutput(:off               ,         1, freq ? :flash : :on, freq || 1, time)
+            else raise "argument error: color #{color} unknown"
             end
         end
 

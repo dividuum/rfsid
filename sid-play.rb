@@ -6,7 +6,12 @@ $stdout.sync = true
 playerpid    = nil
 playinglabel = nil
 
+
 RFID::Device.new(0) do |rfid|
+    # ONT: 0: all transponders in the field will sent to the host
+    rfid.setConfig(5, 11, 0x00)
+
+    rfid.setLED(:green)
     loop do 
         begin
             labels = rfid.readSerials
@@ -23,7 +28,9 @@ RFID::Device.new(0) do |rfid|
                 playinglabel = nil
             end
         else
+            rfid.setLED(:green)
             next if labels.empty?
+            rfid.setLED(:orange)
 
             # Wenn mehrere Labels in Reichweite, so wird nur
             # das erste gelesen
@@ -100,6 +107,7 @@ RFID::Device.new(0) do |rfid|
             end
 
             playinglabel = label
+            rfid.setLED(:red)
         end
     end
 end
