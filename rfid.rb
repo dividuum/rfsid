@@ -105,6 +105,11 @@ module RFID
                                             when 0x03: "ISO15693 Tags"
                                             else       "unknown"
                                             end
+                        serial.blockSize  = case buf[0]
+                                            when 0x00: 4
+                                            when 0x01: 4
+                                            when 0x03: 8
+                                            end
                         serial.dsfid      = buf[1]
                         serial.snr        = buf[2..9]
                         serial.snrHex     = buf[2..9].unpack("H*")[0]
@@ -121,7 +126,7 @@ module RFID
             serials
         end
 
-        def read(snr, blockOffset = 0, blockCount = 32)
+        def read(snr, blockOffset = 0, blockCount = 1)
             raise "invalid address" unless snr.size == 8
             requestOUT(0xB0, 0, 0x2301, snr + [blockOffset, blockCount].pack("CC"))
             status, buf = requestIN(0xB0, 0, 0x2301)
@@ -133,10 +138,10 @@ module RFID
                 numBlocks = buf[0]
                 blockSize = buf[1]
                 buf.slice!(0..1)
-                raise "block size inconsistency"  unless buf.size == numBlocks * 5
+                raise "block size inconsistency"  unless buf.size == numBlocks * (blockSize + 1)
                 data = ""
                 numBlocks.times do 
-                    data += buf[1..blockSize].reverse
+                    data << buf[1..blockSize].reverse
                     buf.slice!(0..blockSize)
                 end
                 [data, numBlocks, blockSize]
@@ -148,11 +153,11 @@ module RFID
             end
         end
 
-        def write(snr, data, blockOffset = 0)
+        def write(snr, data, blockOffset = 0, blockSize = 4)
             # FIXME: Support fuer Blocksize != 4 einbauen?
-            return false unless data.size % 4 == 0
-            data.gsub!(/..../) { |b| b.reverse }
-            requestOUT(0xB0, 0, 0x2401, snr + [blockOffset, data.size / 4, 4].pack("CCC") + data)
+            return false unless data.size % blockSize == 0
+            data.gsub!(/#{'.' * blockSize}/m) { |b| b.reverse }
+            requestOUT(0xB0, 0, 0x2401, snr + [blockOffset, data.size / blockSize, blockSize].pack("CCC") + data)
             requestIN(0xB0, 0, 0x2401) == [RFID::Status::OK, ""]
         end
 
