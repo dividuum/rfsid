@@ -13,6 +13,7 @@ module RFID
     module Status
         OK             = 0x00
         NOTRANSPONDER  = 0x01
+        UNKNOWN        = 0x02
         WRONGTYPE      = 0x05
         ISOWARN        = 0x95
     end
@@ -94,7 +95,7 @@ module RFID
             raise "invalid address" unless snr.size == 8
             requestOUT(0xB0, 0, 0x2301, snr + [blockOffset, numBlocks].pack("CC"))
             status, buf = requestIN(0xB0, 0, 0x2301)
-            if status == 2
+            if status == RFID::Status::UNKNOWN
                 warn "unknown status 2"
                 return nil
             end
