@@ -79,7 +79,7 @@ found:
 int rfid_requestIN(rfid_t *rfid, int req, int value, int index,
                   unsigned char *buf, int buflen) 
 {
-	int ret;
+    int ret;
 
     assert(rfid);
     assert(rfid->dev);
@@ -98,7 +98,7 @@ int rfid_requestIN(rfid_t *rfid, int req, int value, int index,
 int rfid_requestOUT(rfid_t *rfid, int req, int value, int index,
                   unsigned char *buf, int buflen) 
 {
-	int ret;
+    int ret;
     
     assert(rfid);
     assert(rfid->dev);
