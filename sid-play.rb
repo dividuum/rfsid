@@ -8,7 +8,13 @@ playinglabel = nil
 
 RFID::Device.new(0) do |rfid|
     loop do 
-        labels = rfid.readSerials
+        begin
+            labels = rfid.readSerials
+        rescue => e
+            puts e
+            sleep 0.5
+            next
+        end
 
         if playinglabel
             unless labels.include?(playinglabel)
@@ -29,22 +35,34 @@ RFID::Device.new(0) do |rfid|
 
             print "Using label #{label.snrHex}. Loading "
 
-            header, numBlocks, blockSize = rfid.read(label.snr, 3, 1) 
+            begin
+                header, numBlocks, blockSize = rfid.read(label.snr, 3, 1) 
+            rescue => e
+                puts "error reading header: #{e}"
+                next
+            end
+
             unless header
                 puts "cannot read header"
                 next
             end
 
-            uncompressed = header.unpack("n")[0]
-            print "(size = #{uncompressed})"
+            compressed = header.unpack("n")[0]
+            print "(size = #{compressed})"
             
             # Labels sind erst ab Block 3 beschrieben
             offset     = 3
-            blocksLeft = uncompressed / 8 + 1
+            blocksLeft = compressed / 8 + 1
             data  = ""
             begin
                 blocksToRead = [blocksLeft, 16].min
-                blockdata, numBlocks, blockSize = rfid.read(label.snr, offset, blocksToRead) 
+                begin
+                    blockdata, numBlocks, blockSize = rfid.read(label.snr, offset, blocksToRead) 
+                rescue => e
+                    print e
+                    break
+                end
+
                 if blockdata
                     print "."
                     data << blockdata
@@ -56,9 +74,9 @@ RFID::Device.new(0) do |rfid|
                 blocksLeft -= blocksToRead
             end while blocksLeft > 0
 
-            uncompressed, siddata = data.unpack("n a*")
+            compressed, siddata = data.unpack("n a*")
             begin
-                siddata = Zlib::Inflate.inflate(siddata.slice(0...uncompressed))
+                siddata = Zlib::Inflate.inflate(siddata.slice(0...compressed))
             rescue
                 puts "error uncompressing song"
                 next

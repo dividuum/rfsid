@@ -120,7 +120,7 @@ module RFID
                     puts "FSDFSDFSFD" if moredata
                 when RFID::Status::NO_TRANSPONDER:
                 else
-                    raise "cannot read serials" 
+                    raise "cannot read serials: #{status}" 
                 end
             end while moredata
             serials
