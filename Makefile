@@ -1,9 +1,10 @@
-LDFLAGS=-lusb
+all: test librfid.so
 
-all: rfid
+librfid.so: rfid.o
+	$(CC) -shared $^ -lusb -o $@
 
-rfid: rfid.o
-	$(CC) $< $(LDFLAGS) -o $@
+test: test.o librfid.so
+	$(CC) $< -L. -lrfid -o $@
 
 clean:
-	rm -f *.o rfid
+	rm -f *.o test *.so

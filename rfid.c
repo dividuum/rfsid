@@ -9,65 +9,100 @@
 #define RFID_VENDOR  0x0AB1
 #define RFID_PRODUCT 0x0002
 
-struct usb_dev_handle *getRFIDdev() {
+typedef struct rfid_s {
+    usb_dev_handle *dev;
+} rfid_t;
+
+rfid_t *rfid_open(int deviceno) {
+    int    ret;
+    int    num = 0;
+    rfid_t *rfid;
     struct usb_bus *bus;
     struct usb_device *dev;
-    usb_init();
-    usb_find_busses();
-    usb_find_devices();
+
+    if (!usb_get_busses()) {
+        usb_init();
+        usb_find_busses();
+        usb_find_devices();
+    }
+
+    if (!usb_get_busses()) {
+        fprintf(stderr, "no usb bus found?\n");
+        return NULL;
+    }
+        
     for (bus = usb_busses; bus; bus = bus->next) {
         for (dev = bus->devices; dev; dev = dev->next) {
             if (dev->descriptor.idVendor  == RFID_VENDOR &&
                 dev->descriptor.idProduct == RFID_PRODUCT) {
-                return usb_open(dev);
+                if (num++ == deviceno)
+                    goto found;
             }
         }
     }
+    fprintf(stderr, "no device found\n");
     return NULL;
-}
 
-int main() {
-    int ret;
-    usb_dev_handle *rfid = getRFIDdev();
+found:
+    rfid = (rfid_t*)malloc(sizeof(rfid_t));
 
     if (!rfid) {
-        fprintf(stderr, "cannot find RFID device\n");
-        goto out;
+        fprintf(stderr, "cannot allocate memory\n");
+        return NULL;
     }
 
-    if ((ret = usb_claim_interface(rfid, 1)) < 0) {
-        fprintf(stderr, "claim failed: %d %s\n", ret, usb_strerror()); 
-        goto out;
+    rfid->dev = usb_open(dev);
+    if (!rfid->dev) {
+        fprintf(stderr, "cannot open device: %s\n", usb_strerror());
+        free(rfid);
+        return NULL;
     }
 
-    while (1) {
-        unsigned char buf[255];
-        ret = usb_control_msg(rfid, USB_ENDPOINT_IN + USB_TYPE_VENDOR,
-                0xB0, 0x0000, 0x0100, buf, sizeof(buf), 10000);
-
-        if (ret < 0) {
-            fprintf(stderr, "cannot read message: %s\n", usb_strerror());
-            goto out;
-        }
-
-        assert(ret >= 3);
-        assert(buf[2] == 0 || buf[2] == 1);
-
-        if (buf[2] == 0) {
-            assert(ret >= 4);
-            assert(ret == buf[3] * 10 + 4);
-
-            int tag;
-            for (tag = 0; tag < buf[3]; tag++) {
-                int ident;
-                for (ident = 2; ident < 10; ident++)
-                    fprintf(stdout, "%02X", buf[4 + tag * 10 + ident]);
-                fprintf(stdout, "\n");
-            }
-        }
+    ret = usb_claim_interface(rfid->dev, 1);
+    if (ret < 0) {
+        fprintf(stderr, "claim failed: %s\n", usb_strerror()); 
+        usb_close(rfid->dev);
+        free(rfid);
+        return NULL;
     }
-
-out:        
-    if (rfid) usb_close(rfid);
-    return 0;
+    
+    return rfid;
 }
+
+int rfid_requestIN(rfid_t *rfid, int req, int value, int index,
+                  unsigned char *buf, int buflen) 
+{
+    assert(rfid);
+    int ret = usb_control_msg(rfid->dev, USB_ENDPOINT_IN + USB_TYPE_VENDOR,
+                              req, value, index, buf, buflen, 10000);
+
+    if (ret < 0) {
+        fprintf(stderr, "cannot read message: %s\n", usb_strerror());
+        return -1;
+    }
+
+    return ret;
+}
+
+int rfid_requestOUT(rfid_t *rfid, int req, int value, int index,
+                  unsigned char *buf, int buflen) 
+{
+    assert(rfid);
+    int ret = usb_control_msg(rfid->dev, USB_ENDPOINT_OUT + USB_TYPE_VENDOR,
+                              req, value, index, buf, buflen, 10000);
+
+    if (ret < 0) {
+        fprintf(stderr, "cannot read message: %s\n", usb_strerror());
+        return -1;
+    }
+
+    return ret;
+}
+
+void rfid_close(rfid_t *rfid) {
+    assert(rfid);
+    assert(rfid->dev);
+    usb_close(rfid->dev);
+    free(rfid);
+}
+
